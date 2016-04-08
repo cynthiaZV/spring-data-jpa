@@ -29,6 +29,7 @@ import org.springframework.data.jpa.repository.query.JpaQueryExecution.DeleteExe
 import org.springframework.data.jpa.repository.query.ParameterMetadataProvider.ParameterMetadata;
 import org.springframework.data.repository.query.ParametersParameterAccessor;
 import org.springframework.data.repository.query.ResultProcessor;
+import org.springframework.data.repository.query.ReturnedType;
 import org.springframework.data.repository.query.parser.PartTree;
 
 /**
@@ -67,6 +68,15 @@ public class PartTreeJpaQuery extends AbstractJpaQuery {
 
 		this.countQuery = new CountQueryPreparer(persistenceProvider, recreationRequired);
 		this.query = tree.isCountProjection() ? countQuery : new QueryPreparer(persistenceProvider, recreationRequired);
+
+		if (!parameters.hasDynamicProjection()) {
+
+			ReturnedType returnedType = method.getResultProcessor().getReturnedType();
+
+			if (returnedType.needsCustomConstruction() && returnedType.getInputProperties().isEmpty()) {
+				throw new IllegalArgumentException(JpaQueryCreator.NO_INPUT_PROPERTIES);
+			}
+		}
 	}
 
 	/*

@@ -34,10 +34,12 @@ import javax.persistence.TemporalType;
 
 import org.hibernate.Version;
 import org.hibernate.ejb.HibernateQuery;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
+import org.springframework.data.annotation.PersistenceConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -66,6 +68,13 @@ public class PartTreeJpaQueryIntegrationTests {
 
 	@PersistenceContext EntityManager entityManager;
 
+	PersistenceProvider provider;
+
+	@Before
+	public void setUp() {
+		this.provider = PersistenceProvider.fromEntityManager(entityManager);
+	}
+
 	/**
 	 * @see DATADOC-90
 	 * @throws Exception
@@ -74,8 +83,7 @@ public class PartTreeJpaQueryIntegrationTests {
 	public void test() throws Exception {
 
 		JpaQueryMethod queryMethod = getQueryMethod("findByFirstname", String.class, Pageable.class);
-		PartTreeJpaQuery jpaQuery = new PartTreeJpaQuery(queryMethod, entityManager,
-				PersistenceProvider.fromEntityManager(entityManager));
+		PartTreeJpaQuery jpaQuery = new PartTreeJpaQuery(queryMethod, entityManager, provider);
 
 		jpaQuery.createQuery(new Object[] { "Matthews", new PageRequest(0, 1) });
 		jpaQuery.createQuery(new Object[] { "Matthews", new PageRequest(0, 1) });
@@ -102,8 +110,7 @@ public class PartTreeJpaQueryIntegrationTests {
 	public void recreatesQueryIfNullValueIsGiven() throws Exception {
 
 		JpaQueryMethod queryMethod = getQueryMethod("findByFirstname", String.class, Pageable.class);
-		PartTreeJpaQuery jpaQuery = new PartTreeJpaQuery(queryMethod, entityManager,
-				PersistenceProvider.fromEntityManager(entityManager));
+		PartTreeJpaQuery jpaQuery = new PartTreeJpaQuery(queryMethod, entityManager, provider);
 
 		Query query = jpaQuery.createQuery(new Object[] { "Matthews", new PageRequest(0, 1) });
 
@@ -116,23 +123,55 @@ public class PartTreeJpaQueryIntegrationTests {
 		assertThat(hibernateQuery.getHibernateQuery().getQueryString(), endsWith("firstname is null"));
 	}
 
+	/**
+	 * @see DATAJPA-886
+	 */
+	@Test
+	public void rejectsDtoWithAmbiguousConstructors() throws Exception {
+
+		JpaQueryMethod method = getQueryMethod("findDtoByFirstname", String.class);
+
+		thrown.expect(IllegalStateException.class);
+		thrown.expectMessage(UserDto.class.getSimpleName());
+		thrown.expectMessage(PersistenceConstructor.class.getSimpleName());
+
+		new PartTreeJpaQuery(method, entityManager, provider);
+	}
+
+	/**
+	 * @see DATAJPA-886
+	 */
+	@Test
+	public void rejectsDynamicDtoWithAmbiguousConstructors() throws Exception {
+
+		JpaQueryMethod method = getQueryMethod("findDtoByFirstname", String.class, Class.class);
+		PartTreeJpaQuery query = new PartTreeJpaQuery(method, entityManager, provider);
+
+		thrown.expect(IllegalStateException.class);
+		thrown.expectMessage(UserDto.class.getSimpleName());
+		thrown.expectMessage(PersistenceConstructor.class.getSimpleName());
+
+		query.createQuery(new Object[] { "Matthews", UserDto.class });
+	}
+
 	private void testIgnoreCase(String methodName, Object... values) throws Exception {
 
 		Class<?>[] parameterTypes = new Class[values.length];
+
 		for (int i = 0; i < values.length; i++) {
 			parameterTypes[i] = values[i].getClass();
 		}
-		Method method = UserRepository.class.getMethod(methodName, parameterTypes);
+
 		JpaQueryMethod queryMethod = getQueryMethod(methodName, parameterTypes);
-		PartTreeJpaQuery jpaQuery = new PartTreeJpaQuery(queryMethod, entityManager,
-				PersistenceProvider.fromEntityManager(entityManager));
-		jpaQuery.createQuery(values);
+		new PartTreeJpaQuery(queryMethod, entityManager, provider).createQuery(values);
 	}
 
 	private JpaQueryMethod getQueryMethod(String methodName, Class<?>... parameterTypes) throws Exception {
+
 		Method method = UserRepository.class.getMethod(methodName, parameterTypes);
+
 		return new JpaQueryMethod(method, new DefaultRepositoryMetadata(UserRepository.class),
-				new SpelAwareProxyProjectionFactory(), PersistenceProvider.fromEntityManager(entityManager));
+				new SpelAwareProxyProjectionFactory(), provider);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -169,5 +208,16 @@ public class PartTreeJpaQueryIntegrationTests {
 		User findByIdAllIgnoringCase(Integer id);
 
 		List<User> findByCreatedAtAfter(@Temporal(TemporalType.TIMESTAMP) @Param("refDate") Date refDate);
+
+		UserDto findDtoByFirstname(String firstname);
+
+		<T extends UserDto> T findDtoByFirstname(String firstname, Class<T> type);
+	}
+
+	static class UserDto {
+
+		UserDto(String firstname) {}
+
+		UserDto(int age) {}
 	}
 }
