@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2015 the original author or authors.
+ * Copyright 2008-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +48,8 @@ import org.springframework.util.Assert;
  */
 public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<? extends Object>, Predicate> {
 
+	static final String NO_INPUT_PROPERTIES = "Unable to detect input properties for returned type %s. In case the type has multiple no-argument constructors, use @PersistenceConstructor to select the one to be used for the query!";
+
 	private final CriteriaBuilder builder;
 	private final Root<?> root;
 	private final CriteriaQuery<? extends Object> query;
@@ -94,7 +96,6 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<? extend
 	 */
 	@Override
 	protected Predicate create(Part part, Iterator<Object> iterator) {
-
 		return toPredicate(part, root);
 	}
 
@@ -142,9 +143,16 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<? extend
 
 		if (returnedType.needsCustomConstruction()) {
 
+			List<String> inputProperties = returnedType.getInputProperties();
+
+			if (inputProperties.isEmpty()) {
+				throw new IllegalStateException(
+						String.format(NO_INPUT_PROPERTIES, returnedType.getReturnedType().getSimpleName()));
+			}
+
 			List<Selection<?>> selections = new ArrayList<Selection<?>>();
 
-			for (String property : returnedType.getInputProperties()) {
+			for (String property : inputProperties) {
 				selections.add(root.get(property).alias(property));
 			}
 
